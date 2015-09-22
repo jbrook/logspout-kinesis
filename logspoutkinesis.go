@@ -1,6 +1,23 @@
-// Based on:
-// - https://github.com/rtoma/logspout-redis-logstash/blob/master/redis.go
+/*
+ * Copyright 2013-2014 the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
+/* Based on:
+ * https://github.com/rtoma/logspout-redis-logstash/blob/master/redis.go
+*/
+ 
 package logspoutkinesis
 
 import (
@@ -31,6 +48,7 @@ type DockerFields struct {
     CID         string              `json:"cid"`
     Image       string              `json:"image"`
     ImageTag    string              `json:"image_tag,omitempty"`
+    ImageRepo   string              `json:"image_repo,omitempty"`
     Source      string              `json:"source"`
     DockerHost  string              `json:"docker_host,omitempty"`
     Labels      map[string]string   `json:"labels,omitempty"`
@@ -218,27 +236,29 @@ func (ka *KinesisAdapter) Stream(logstream chan *router.Message) {
 	}
 }	
 
-func splitImage(image string) (string, string) {
-    tag := ""
-    parts := strings.SplitN(image, "/", 2)
-    repo := ""
-    if len(parts) == 2 {
+func splitImage(image string) (string, string, string) {
+    var tag string
+    var repo string
+
+    parts := strings.Split(image, "/")
+    parts_len := len(parts)
+    if parts_len > 2 {
         repo = parts[0]
-        image = parts[1]
+        image = strings.Join(parts[1:parts_len], "/")
     }
+
     parts = strings.SplitN(image, ":", 2)
+
     if len(parts) == 2 {
         image = parts[0]
         tag = parts[1]
     }
-    if repo != "" {
-        image = fmt.Sprintf("%s/%s", repo, image)
-    }
-    return image, tag
+
+    return image, tag, repo
 }
 
 func createLogstashMessage(m *router.Message, docker_host string, use_v0 bool) interface{} {
-    image_name, image_tag := splitImage(m.Container.Config.Image)
+    image_name, image_tag, image_repo := splitImage(m.Container.Config.Image)
     cid := m.Container.ID[0:12]
     name := m.Container.Name[1:]
     labels := m.Container.Config.Labels
@@ -255,6 +275,7 @@ func createLogstashMessage(m *router.Message, docker_host string, use_v0 bool) i
                     Name:       name,
                     Image:      image_name,
                     ImageTag:   image_tag,
+                    ImageRepo:  image_repo,
                     Source:     m.Source,
                     DockerHost: docker_host,
                     Labels: labels,
